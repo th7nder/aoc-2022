@@ -1,5 +1,7 @@
-mod day5;
+// mod day4;
+// mod day5;
+mod day6;
 
 fn main() {
-    day5::part2();
+    day6::solve(day6::INPUT_SIGNAL, 14);
 }
