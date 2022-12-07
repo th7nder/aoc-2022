@@ -119,7 +119,7 @@ fn parse(reader: io::Lines<io::BufReader<File>>) -> Rc<RefCell<Entry>> {
             }
 
             if l.starts_with("$ cd") {
-                println!("Xd: {}", l);
+                // println!("Xd: {}", l);
                 let cap = cd_regex.captures(&l).unwrap();
                 let dir_name = cap.name("directory").unwrap().as_str();
 
@@ -143,6 +143,31 @@ fn parse(reader: io::Lines<io::BufReader<File>>) -> Rc<RefCell<Entry>> {
     return root;
 }
 
+
+const required_space: usize = 30000000;
+const total_space: usize = 70000000;
+
+fn find_smallest_directory(
+    cell: Rc<RefCell<Entry>>,
+    currently_unused: usize,
+    smallest_dir: &mut Rc<RefCell<Entry>>,
+) {
+    let mut entry = cell.borrow();
+
+    if entry.size < smallest_dir.borrow().size && currently_unused + entry.size >= required_space {
+        *smallest_dir = Rc::clone(&cell);
+        println!("Smallest: {}, {} ", entry.size, entry.name)
+    }
+
+    for entry in &entry.entries {
+        let r = entry.borrow();
+        if r.entries.len() == 0 {
+            continue;
+        }
+        find_smallest_directory(Rc::clone(entry), currently_unused, smallest_dir)
+    }
+}
+
 pub fn solve() {
     let file = match File::open("inputs/7_input") {
         Err(why) => panic!("Couldn't open file {}", why),
@@ -155,7 +180,11 @@ pub fn solve() {
     println!("x: {}", root.borrow().print());
 
     let mut part1: usize = 0;
-    calculate_directory_sizes(root, &mut part1);
+    calculate_directory_sizes(Rc::clone(&root), &mut part1);
+
+    let mut smallest_dir = Rc::clone(&root);
+    let currently_unused = total_space - Rc::clone(&root).borrow().size;
+    find_smallest_directory(Rc::clone(&root), currently_unused, &mut smallest_dir);
 
     println!("{}", part1);
 }
