@@ -128,80 +128,51 @@ fn determine_max_height(tree: &Tree, grid: &Grid, direction: Direction) -> u32 {
     };
 }
 
-fn visible_trees(tree: &Tree, grid: &Grid, direction: Direction, stop: u32) -> u32 {
+fn visible_trees_in_direction_from(tree: &Tree, grid: &Grid, direction: Direction, stop: u32) -> u32 {
     println!("Going {:?} from {:?}", direction, tree);
-    return match direction {
+    let next_tree: &Tree = match direction {
         Direction::Left => {
             if tree.x == 0 {
-                0
-            } else {
-                let next_tree = grid.trees.get(tree.y).unwrap().get(tree.x - 1).unwrap();
-                if next_tree.height >= stop {
-                    return 1
-                } else {
-                    let neighbour = visible_trees(
-                        next_tree,
-                        grid,
-                        direction,
-                        stop
-                    );
+                return 0;
+            } 
 
-                    return 1 + neighbour;
-                }
-            }
-        }
+            grid.trees.get(tree.y).unwrap().get(tree.x - 1).unwrap()
+        },
         Direction::Right => {
             if tree.x == grid.max_x - 1 {
-                0
-            } else {
-                let next_tree = grid.trees.get(tree.y).unwrap().get(tree.x + 1 ).unwrap();
-                if next_tree.height >= stop {
-                    return 1
-                } else {
-                    return 1 + visible_trees(
-                        next_tree,
-                        grid,
-                        direction,
-                        stop
-                    );
-                }
+                return 0;
             }
-        }
+
+            grid.trees.get(tree.y).unwrap().get(tree.x + 1 ).unwrap()
+        },
         Direction::Down => {
             if tree.y == grid.max_y - 1 {
-                0
-            } else {
-                let next_tree = grid.trees.get(tree.y + 1).unwrap().get(tree.x).unwrap();
-                if next_tree.height >= stop {
-                    return 1
-                } else {
-                    return 1 + visible_trees(
-                        next_tree,
-                        grid,
-                        direction,
-                        stop
-                    );
-                }
+                return 0;
             }
-        }
+                
+            grid.trees.get(tree.y + 1).unwrap().get(tree.x).unwrap()
+        },
         Direction::Top => {
             if tree.y == 0 {
-                0
-            } else {
-                let next_tree = grid.trees.get(tree.y - 1).unwrap().get(tree.x).unwrap();
-                if next_tree.height >= stop {
-                    return 1
-                } else {
-                    return 1 + visible_trees(
-                        next_tree,
-                        grid,
-                        direction,
-                        stop
-                    );
-                }
-            }
-        }
+                return 0;
+            } 
+
+            grid.trees.get(tree.y - 1).unwrap().get(tree.x).unwrap()
+        },
     };
+
+    if next_tree.height >= stop {
+        return 1;
+    } 
+    
+    let neighbour = visible_trees_in_direction_from(
+        next_tree,
+        grid,
+        direction,
+        stop
+    );
+
+    return 1 + neighbour;
 }
 
 fn visibility_score(tree: &Tree, grid: &Grid) -> u32 {
@@ -214,7 +185,7 @@ fn visibility_score(tree: &Tree, grid: &Grid) -> u32 {
         if next_tree.height >= tree.height {
             left = 1;
         } else {
-            left = 1 + visible_trees(
+            left = 1 + visible_trees_in_direction_from(
                 next_tree,
                 grid,
                 Direction::Left,
@@ -227,7 +198,7 @@ fn visibility_score(tree: &Tree, grid: &Grid) -> u32 {
         if next_tree.height >= tree.height {
             right = 1;
         } else {
-            right = 1 + visible_trees(
+            right = 1 + visible_trees_in_direction_from(
                 next_tree,
                 grid,
                 Direction::Right,
@@ -240,7 +211,7 @@ fn visibility_score(tree: &Tree, grid: &Grid) -> u32 {
         if next_tree.height >= tree.height {
             bottom = 1;
         } else {
-            bottom = 1 + visible_trees(
+            bottom = 1 + visible_trees_in_direction_from(
                 next_tree,
                 grid,
                 Direction::Down,
@@ -253,7 +224,7 @@ fn visibility_score(tree: &Tree, grid: &Grid) -> u32 {
         if next_tree.height >= tree.height {
             top = 1;
         } else {
-            top = 1 + visible_trees(
+            top = 1 + visible_trees_in_direction_from(
                 next_tree,
                 grid,
                 Direction::Top,
