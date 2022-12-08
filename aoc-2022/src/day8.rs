@@ -128,6 +128,151 @@ fn determine_max_height(tree: &Tree, grid: &Grid, direction: Direction) -> u32 {
     };
 }
 
+fn visible_trees(tree: &Tree, grid: &Grid, direction: Direction, stop: u32) -> u32 {
+    println!("Going {:?} from {:?}", direction, tree);
+    return match direction {
+        Direction::Left => {
+            if tree.x == 0 {
+                0
+            } else {
+                let next_tree = grid.trees.get(tree.y).unwrap().get(tree.x - 1).unwrap();
+                if next_tree.height >= stop {
+                    return 1
+                } else {
+                    let neighbour = visible_trees(
+                        next_tree,
+                        grid,
+                        direction,
+                        stop
+                    );
+
+                    return 1 + neighbour;
+                }
+            }
+        }
+        Direction::Right => {
+            if tree.x == grid.max_x - 1 {
+                0
+            } else {
+                let next_tree = grid.trees.get(tree.y).unwrap().get(tree.x + 1 ).unwrap();
+                if next_tree.height >= stop {
+                    return 1
+                } else {
+                    return 1 + visible_trees(
+                        next_tree,
+                        grid,
+                        direction,
+                        stop
+                    );
+                }
+            }
+        }
+        Direction::Down => {
+            if tree.y == grid.max_y - 1 {
+                0
+            } else {
+                let next_tree = grid.trees.get(tree.y + 1).unwrap().get(tree.x).unwrap();
+                if next_tree.height >= stop {
+                    return 1
+                } else {
+                    return 1 + visible_trees(
+                        next_tree,
+                        grid,
+                        direction,
+                        stop
+                    );
+                }
+            }
+        }
+        Direction::Top => {
+            if tree.y == 0 {
+                0
+            } else {
+                let next_tree = grid.trees.get(tree.y - 1).unwrap().get(tree.x).unwrap();
+                if next_tree.height >= stop {
+                    return 1
+                } else {
+                    return 1 + visible_trees(
+                        next_tree,
+                        grid,
+                        direction,
+                        stop
+                    );
+                }
+            }
+        }
+    };
+}
+
+fn visibility_score(tree: &Tree, grid: &Grid) -> u32 {
+    let mut left = 0;
+    let mut right = 0;
+    let mut top = 0;
+    let mut bottom = 0;
+    if tree.x > 0 {
+        let next_tree = grid.trees.get(tree.y).unwrap().get(tree.x - 1).unwrap();
+        if next_tree.height >= tree.height {
+            left = 1;
+        } else {
+            left = 1 + visible_trees(
+                next_tree,
+                grid,
+                Direction::Left,
+                tree.height
+            );
+        }
+    }
+    if tree.x < grid.max_x - 1 {
+        let next_tree = grid.trees.get(tree.y).unwrap().get(tree.x + 1).unwrap();
+        if next_tree.height >= tree.height {
+            right = 1;
+        } else {
+            right = 1 + visible_trees(
+                next_tree,
+                grid,
+                Direction::Right,
+                tree.height
+            );
+        }
+    }
+    if tree.y > 0 {
+        let next_tree = grid.trees.get(tree.y + 1).unwrap().get(tree.x).unwrap();
+        if next_tree.height >= tree.height {
+            bottom = 1;
+        } else {
+            bottom = 1 + visible_trees(
+                next_tree,
+                grid,
+                Direction::Down,
+                tree.height
+            );
+        }
+    }
+    if tree.y < grid.max_y - 1 {
+        let next_tree = grid.trees.get(tree.y - 1).unwrap().get(tree.x).unwrap();
+        if next_tree.height >= tree.height {
+            top = 1;
+        } else {
+            top = 1 + visible_trees(
+                next_tree,
+                grid,
+                Direction::Top,
+                tree.height
+            );
+        }
+    }
+
+    println!(
+        "SELF: {:?} |||||||||||| Left: {}, Right: {}, Top: {}, Bottom: {}",
+        tree,
+        left, right, top, bottom
+    );
+
+
+    return left * right * top * bottom;
+}
+
+
 fn visible_outside(tree: &Tree, grid: &Grid) -> bool {
     if tree.x == 0 || tree.x == grid.max_x - 1 || tree.y == 0 || tree.y == grid.max_y - 1 {
         return true;
@@ -193,6 +338,25 @@ fn part1(grid: &Grid) {
     println!("Result: {}", visible + edge_visible);
 }
 
+fn part2(grid: &Grid) {
+    let mut max_score = 0;
+    for row in &grid.trees {
+        for tree in row {
+            if tree.x == 0 || tree.x == grid.max_x - 1 || tree.y == 0 || tree.y == grid.max_y - 1 {
+                continue;
+            } else {
+                let score = visibility_score(tree, grid);
+                max_score = max(max_score, score);
+                
+                println!("score: {}, tree: {:?}", score, tree);
+            }
+        }
+    }
+
+    println!("Score: {}", max_score);
+}
+
+
 pub fn solve() {
     let file = match File::open("inputs/8_input") {
         Err(why) => panic!("Couldn't open file {}", why),
@@ -203,7 +367,8 @@ pub fn solve() {
     let grid = parse(reader);
     grid.print();
 
-    part1(&grid);
+    // part1(&grid);
+    part2(&grid);
 }
 
 mod tests {
@@ -211,6 +376,17 @@ mod tests {
 
     fn grid() -> Grid {
         let file = match File::open("inputs/8_input_sanity") {
+            Err(why) => panic!("Couldn't open file {}", why),
+            Ok(file) => file,
+        };
+
+        let reader = io::BufReader::new(file).lines();
+        let grid = parse(reader);
+        return grid;
+    }
+
+    fn grid_big() -> Grid {
+        let file = match File::open("inputs/8_input") {
             Err(why) => panic!("Couldn't open file {}", why),
             Ok(file) => file,
         };
@@ -296,6 +472,60 @@ mod tests {
         assert_eq!(
             true,
             visible_outside(grid.trees.get(1).unwrap().get(2).unwrap(), &grid)
+        );
+    }
+
+
+    #[test]
+    fn visibility_score_top_mid() {
+        let grid = grid();
+
+        assert_eq!(
+            4,
+            visibility_score(grid.trees.get(1).unwrap().get(2).unwrap(), &grid)
+        );
+    }
+
+    #[test]
+    fn visibility_score_bottom_mid() {
+        let grid = grid();
+
+        assert_eq!(
+            8,
+            visibility_score(grid.trees.get(3).unwrap().get(2).unwrap(), &grid)
+        );
+    }
+
+    #[test]
+    fn visibility_score_next_1() {
+        let grid = grid();
+
+        assert_eq!(
+            1,
+            visibility_score(grid.trees.get(3).unwrap().get(1).unwrap(), &grid)
+        );
+    }
+
+    #[test]
+    fn visibility_score_next_2() {
+        let grid = grid();
+
+        assert_eq!(
+            1,
+            visibility_score(grid.trees.get(2).unwrap().get(2).unwrap(), &grid)
+        );
+    }
+
+
+
+    #[test]
+    fn visibility_score_gird_big() {
+        let grid = grid_big();
+
+        println!("{:?}", grid.trees.get(77).unwrap());
+        assert_eq!(
+            1,
+            visibility_score(grid.trees.get(77).unwrap().get(43).unwrap(), &grid)
         );
     }
 }
