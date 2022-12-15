@@ -1,4 +1,4 @@
-use std::{collections::{VecDeque, HashSet}, rc::Rc, cell::{RefCell, RefMut}, fs::File};
+use std::{collections::{VecDeque, HashSet, HashMap}, rc::Rc, cell::{RefCell, RefMut}, fs::File};
 use std::io::{self, BufRead};
 
 #[derive(Debug)]
@@ -98,55 +98,92 @@ impl Node {
         }
     }
 
-    fn ordered(&self, right: &Node) -> bool {
+    fn ordered<'a>(&'a self, right: &Node) -> bool {
+        let mut borrowable_values: HashMap<u32, Value> = HashMap::new();
+        for i in 0..10 {
+            borrowable_values.insert(
+                i, 
+                Value::List(vec![Node::simple(i)])
+            );
+        }
+
         let mut left_queue: VecDeque<&Value> = VecDeque::new();
         let mut right_queue: VecDeque<&Value> = VecDeque::new();
 
         left_queue.push_back(&self.value);
         right_queue.push_back(&right.value);
 
-        let mut last_compare = false;
     
         while left_queue.len() > 0 {
+            println!("left queue: {:?}", left_queue);
+            println!("right queue: {:?}", right_queue);
             let left_value = left_queue.pop_front().unwrap();
             if right_queue.len() == 0 {
                 println!("returning because of the empty queue");
-                return last_compare;
+                return false;
             }
             let right_value = right_queue.pop_front().unwrap();
 
-            last_compare = false;
             // convert to a list, instead of converting to a number!
             match left_value {
                 Value::List(left_values) => {
                     println!("!!!! left is list, {:?}", left_value);
 
-                    left_values.iter().rev().for_each(|node| left_queue.push_front(&node.value));
                     match right_value {
                         Value::List(right_values) => {
-                            println!("right is list, {:?}", right_value);
-                            right_values.iter().rev().for_each(|node| right_queue.push_front(&node.value));
+                            let mut last_right_idx = 0;
+                            println!("#### right is list, {:?}", right_value);
+                            for (left_idx, left_node) in left_values.iter().enumerate().rev() {
+                                left_queue.push_front(&left_node.value);
+
+                                if let Some(right_node) = right_values.get(left_idx) {
+                                    last_right_idx = left_idx;
+                                    match right_node.value {
+                                        Value::List(_) => right_queue.push_front(&right_node.value),
+                                        Value::Simple(right_value) => {
+                                            match left_node.value {
+                                                 Value::List(_) => {
+                                                     left_queue.push_front(&left_node.value);
+                                                     right_queue.push_front(&borrowable_values.get(&right_value).unwrap())
+                                                 },
+                                                 Value::Simple(left_value) => {
+                                                    if left_value < right_value {
+                                                        return true;
+                                                    } else if left_value > right_value {
+                                                        return false;
+                                                    }
+                                                 },
+                                            }
+                                        }  
+                                    }
+                                    right_queue.push_front(&right_node.value);
+                                }                        
+                            }
+
+                            for idx in last_right_idx..right_values.len() {
+                                right_queue.push_back(&right_values.get(idx).unwrap().value);
+                            }
                         }
-                        Value::Simple(_) => { 
-                            println!("right is simple, {:?}", right_value);
-                            right_queue.push_front(right_value)
+                        Value::Simple(v) => { 
+                            left_queue.push_front(&left_value);
+                            right_queue.push_front(&borrowable_values.get(v).unwrap());
                         }
                     }
                 },
                 Value::Simple(left_v) => {
                     println!("!!! left is simple {:?}", left_value);
                     match right_value {
-                        Value::List(right_values) => { 
-                            println!("!!! left is simple, but right is list, {:?}", right_value);
-                            left_queue.push_front(left_value);
-                            right_values.iter().rev().for_each(|node| right_queue.push_front(&node.value))
+                        Value::List(_) => { 
+                            println!("### right is list {:?}", right_value);
+                            left_queue.push_front(&borrowable_values.get(left_v).unwrap());
+                            right_queue.push_front(right_value);
                         },
                         Value::Simple(right_v) => {
-                            println!("comparing: {}, {}", left_v, right_v);
+                            println!("comparing: {} vs {}", left_v, right_v);
                             if left_v > right_v {
                                 return false;
                             } else if left_v < right_v {
-                                last_compare = true;
+                                return true;
                             }
                         },
                     }
@@ -221,6 +258,39 @@ pub fn solve() {
 
 mod tests {
     use super::*;
+
+    #[test]
+    fn base_case_1() {
+        let left = Node::parse("[1,2,3,4]");
+        let right = Node::parse("[1,2,3,4]");
+
+        assert!(left.ordered(&right));
+    }
+
+    #[test]
+    fn base_case_2() {
+        let left = Node::parse("[1,2,3]");
+        let right = Node::parse("[1,2,3,4]");
+
+        assert!(left.ordered(&right));
+    }
+
+    #[test]
+    fn base_case_3() {
+        let left = Node::parse("[1,2,3,4]");
+        let right = Node::parse("[1,2,3]");
+
+        assert!(!left.ordered(&right));
+    }
+
+    #[test]
+    fn complex_1() {
+        let left = Node::parse("[1,2,3,[4,1]]");
+        let right = Node::parse("[1,2,3,5,6]");
+
+        assert!(!left.ordered(&right));
+    }
+
 
     #[test]
     fn left_greater_than_right() {
