@@ -5,7 +5,6 @@ use std::io::{self, BufRead};
 enum Value {
     List(Vec<Node>),
     Simple(u32),
-    Empty,
 }
 
 
@@ -49,7 +48,6 @@ impl Node {
                                                 values.push(old_current_node);
                                             },
                                             Value::Simple(_) => todo!(),
-                                            Value::Empty => todo!(),
                                         }
                                         
                                     },
@@ -76,7 +74,6 @@ impl Node {
                                 nodes.push(Node::simple(number));
                             },
                             Value::Simple(_) => panic!("Shoulnt be simple"),
-                            Value::Empty => todo!(),
                         }
                     } else {
                         panic!("Shouldn't happen.")
@@ -119,22 +116,21 @@ impl Node {
             let right_value = right_queue.pop_front().unwrap();
 
             last_compare = false;
+            // convert to a list, instead of converting to a number!
             match left_value {
                 Value::List(left_values) => {
                     println!("!!!! left is list, {:?}", left_value);
 
-                    left_values.iter().for_each(|node| left_queue.push_back(&node.value));
+                    left_values.iter().rev().for_each(|node| left_queue.push_front(&node.value));
                     match right_value {
                         Value::List(right_values) => {
                             println!("right is list, {:?}", right_value);
-                            right_values.iter().for_each(|node| right_queue.push_back(&node.value));
+                            right_values.iter().rev().for_each(|node| right_queue.push_front(&node.value));
                         }
-                        // push back, vs push front
                         Value::Simple(_) => { 
                             println!("right is simple, {:?}", right_value);
-                            right_queue.push_back(right_value)
+                            right_queue.push_front(right_value)
                         }
-                        Value::Empty => todo!(),
                     }
                 },
                 Value::Simple(left_v) => {
@@ -143,7 +139,7 @@ impl Node {
                         Value::List(right_values) => { 
                             println!("!!! left is simple, but right is list, {:?}", right_value);
                             left_queue.push_front(left_value);
-                            right_values.iter().for_each(|node| right_queue.push_back(&node.value))
+                            right_values.iter().rev().for_each(|node| right_queue.push_front(&node.value))
                         },
                         Value::Simple(right_v) => {
                             println!("comparing: {}, {}", left_v, right_v);
@@ -153,22 +149,14 @@ impl Node {
                                 last_compare = true;
                             }
                         },
-                        Value::Empty => todo!(),
                     }
                 },
-                Value::Empty => todo!(),
             }
         }
 
         return true;
     }
-
-    fn new() -> Node {
-        Node {
-            value: Value::Empty,
-        }
-    }
-
+    
     fn new_list() -> Node {
         Node {
             value: Value::List(vec![]),
@@ -313,6 +301,39 @@ mod tests {
         assert_eq!(false, left.ordered(&right));
     }
 
+
+    #[test]
+    fn complex_case_3() {
+        let left = Node::parse("[9,8,7,6,5,4,8]");
+        let right = Node::parse("[9,[[8],[[[7]]],6,[[5]]],4,[[3]]]");
+
+        assert_eq!(false, left.ordered(&right));
+    }
+
+    #[test]
+    fn complex_case_4() {
+        let left = Node::parse("[9,8,7,6,5,4,8]");
+        let right = Node::parse("[9,[[8],[[[7]]],6,[[5]]],4,[[]]]");
+
+        assert_eq!(false, left.ordered(&right));
+    }
+
+    #[test]
+    fn complex_case_finally_understood_problem() {
+        let left = Node::parse("[9,8,[7,6,5],4]");
+        let right = Node::parse("[9,8,7,6,5,4]");
+
+        assert_eq!(false, left.ordered(&right));
+    }
+
+    #[test]
+    fn complex_case_finally_understood_problem_v2() {
+        let left = Node::parse("[[1],[2,3,4]]");
+        let right = Node::parse("[[1],2,3]");
+
+        assert_eq!(false, left.ordered(&right));
+    }
+
     #[test]
     fn left_without_itmes() {
         // [[4,4],4,4] 
@@ -333,6 +354,16 @@ mod tests {
                 Node::simple(4),
             ])
         };
+
+        assert_eq!(true, left.ordered(&right));
+    }
+
+    // let's try to break it
+
+    #[test]
+    fn neighbouring_lists() {
+        let left = Node::parse("[[1,2,3],[9,8,7,6,5],0]");
+        let right = Node::parse("[[1,2,3],[[[9,8,7],6],5],4]");
 
         assert_eq!(true, left.ordered(&right));
     }
@@ -361,21 +392,10 @@ mod tests {
 
     #[test]
     fn empty_recurrent_lists() { 
-        //  [[]]
-        let left = Node::parse("[[[]]]");
-        let right = Node {
-            value: Value::List(
-                vec![
-                    Node {
-                        value: Value::List(
-                            vec![]
-                        )
-                    }
-                ]
-            )
-        };
+        let left = Node::parse("[[[0,[2]]]]");
+        let right = Node::parse("[[[[2]]]]");
 
-        assert_eq!(false, left.ordered(&right));
+        assert_eq!(true, left.ordered(&right));
     }
 
     #[test]
