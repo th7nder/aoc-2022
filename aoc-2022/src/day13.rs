@@ -601,13 +601,17 @@ pub fn solve() {
     let mut pair_index: usize = 0;
     let mut left: Option<Node> = None;
     let mut right: Option<Node> = None;
+
+    let mut nodes = vec![];
     for line in reader {
         if let Ok(line) = line {
             if left.is_none() {
                 pair_index += 1;
                 left = Some(Node::parse(&line));
+                nodes.push(Node::parse(&line));
             } else if right.is_none() {
-                right = Some(Node::parse(&line))
+                right = Some(Node::parse(&line));
+                nodes.push(Node::parse(&line));
             } else {
                 if left.unwrap().ordered_recursive(&right.unwrap()).good() {
                     ordered.push(pair_index);
@@ -617,6 +621,9 @@ pub fn solve() {
             }
         }
     }
+
+    nodes.push(Node::parse("[[2]]"));
+    nodes.push(Node::parse("[[6]]"));
     // 12 -> incorrect
     // 25 -> correct
     // 42 -> correct
@@ -627,6 +634,29 @@ pub fn solve() {
     }
 
     println!("{:?}, {}", ordered, ordered.iter().sum::<usize>());
+
+    nodes.sort_by(|a, b| {
+        match a.ordered_recursive(b) {
+            OrderingResult::Same => std::cmp::Ordering::Equal,
+            OrderingResult::Correct => std::cmp::Ordering::Less,
+            OrderingResult::Incorrect => std::cmp::Ordering::Equal,
+        }
+    });
+
+    let mut left = 0;
+    let mut right = 0;
+    for  (idx, node) in nodes.iter().enumerate() {
+        println!("{}", node.print());
+        if node.print() == "[[2]]" {
+            left = idx + 1;
+        } 
+        if node.print() == "[[6]]" {
+            right = idx + 1;
+        }
+    }
+
+    println!("Decoder key {}", left * right);
+
 }
 
 mod tests {
