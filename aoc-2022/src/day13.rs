@@ -22,7 +22,17 @@ struct Node {
 enum OrderingResult {
     Same,
     Correct,
-    Incorrect
+    Incorrect,
+}
+
+impl OrderingResult {
+    fn good(&self) -> bool {
+        match self {
+            OrderingResult::Same => true,
+            OrderingResult::Correct => true,
+            OrderingResult::Incorrect => false,
+        }
+    }
 }
 
 impl Node {
@@ -31,6 +41,7 @@ impl Node {
         let mut current_node: Option<Rc<RefCell<Node>>> = None;
 
         let mut current_level = 0;
+        let mut current_str = "".to_string();
         for char in line.chars() {
             if char == '[' {
                 match current_node.clone() {
@@ -43,6 +54,24 @@ impl Node {
                 current_level += 1;
                 current_node = Some(Rc::new(RefCell::new(Node::new_list(current_level))));
             } else if char == ']' {
+                if current_str.len() > 0 {
+                    let number = current_str.parse::<u32>().unwrap();
+                    if let Some(current_node) = current_node.clone() {
+                        match current_node.borrow_mut().value {
+                            Value::List(ref mut nodes) => {
+                                println!("Pushing: {}", number);
+                                nodes.push(Node::simple(number, current_level));
+                            }
+                            Value::Simple(_) => panic!("Shoulnt be simple"),
+                        }
+                    } else {
+                        panic!("Shouldn't happen.")
+                    }
+    
+                    current_str = "".to_string();
+                }
+
+                current_level -= 1;
                 println!("Popping from the stack");
                 let mut old_current_node = current_node.clone();
                 current_node = stack.pop_front();
@@ -72,9 +101,8 @@ impl Node {
                     }
                 }
             } else if char == ',' {
-                continue;
-            } else {
-                if let Some(number) = char.to_digit(10) {
+                if current_str.len() > 0 {
+                    let number = current_str.parse::<u32>().unwrap();
                     if let Some(current_node) = current_node.clone() {
                         match current_node.borrow_mut().value {
                             Value::List(ref mut nodes) => {
@@ -86,9 +114,11 @@ impl Node {
                     } else {
                         panic!("Shouldn't happen.")
                     }
-                } else {
-                    panic!("Shouldn't happen, char: {}", char);
+    
+                    current_str = "".to_string();
                 }
+            } else {
+                current_str.push(char);
             }
         }
 
@@ -106,10 +136,180 @@ impl Node {
 
     // need to decide when to do recursive and when to do iterative
 
-
-
     // we need to keep track whether it was already compared?
     fn ordered_recursive(&self, right: &Node) -> OrderingResult {
+        // [1, [1,2,3]]
+        // [1,2,]
+        println!(
+            "Ordering node at level: {} = {} vs {}",
+            self.level,
+            self.print(),
+            right.print()
+        );
+        match self.value {
+            // starting with [1,2,3,4]
+            Value::List(ref values) => {
+                // println!("Left value is list: {:?}", self.value);
+                for (left_node_idx, left_node) in values.iter().enumerate() {
+                    // println!(
+                    // "Processing node index: {}, at level: {} = {:?}",
+                    // left_node_idx, left_node.level, left_node
+                    // );
+
+                    match left_node.value {
+                        Value::List(_) => {
+                            println!("Left node is list, so going deeper.");
+                            match right.value {
+                                // [1,2,3,4] vs [1,2,3]
+                                // [1,2,3,4] vs []
+                                Value::List(ref right_deep_values) => {
+                                    if let Some(right_deep_node) =
+                                        right_deep_values.get(left_node_idx)
+                                    {
+                                        match right_deep_node.value {
+                                            // [1,2,3] vs [[1,2,3]] => [1] vs [1,2,3]
+                                            Value::List(_) => {
+                                                println!("Right deep value is a list");
+                                                match left_node.ordered_recursive(right_deep_node) {
+                                                    OrderingResult::Same => {}
+                                                    res => {
+                                                        return res;
+                                                    }
+                                                }
+                                            }
+                                            Value::Simple(right_deep_value_number) => {
+                                                println!("Right deep value is simple");
+                                                let new_node = Node::simple_list(
+                                                    vec![right_deep_value_number],
+                                                    self.level + 1,
+                                                );
+                                                match left_node.ordered_recursive(&new_node) {
+                                                    OrderingResult::Same => {}
+                                                    res => {
+                                                        return res;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        println!("There is no items");
+                                        // we ran out of the items
+                                        return OrderingResult::Incorrect;
+                                    }
+                                }
+                                Value::Simple(_) => todo!("Shouldn't happen?"),
+                            }
+
+                            // // TODO: should we pass the current path here?
+                            // match left_node.ordered_recursive(right) {
+                            //     // Same, means that what?
+                            //     // There was the same number of items on the left and on the right.
+                            //     // WE need to proceed further.
+                            //     OrderingResult::Same => {}
+                            //     res => {
+                            //         return res;
+                            //     }
+                            // }
+                        }
+                        // as well ass [1,2,3] vs []
+                        // [1,2,3,4] vs [1,2,3,4]
+                        // but also
+                        // [1,2,3,4] vs [[1],2,[3,4]]
+                        // => [1] vs [1]
+                        // => 2 vs 2
+                        // => [3] s [3,4]
+                        // => 4 vs nothing
+                        Value::Simple(left_value_number) => {
+                            println!("Left node is a number, so we want to compare.");
+
+                            match right.value {
+                                // [1,2,3,4] vs [1,2,3]
+                                // [1,2,3,4] vs []
+                                Value::List(ref right_deep_values) => {
+                                    if let Some(right_deep_node) =
+                                        right_deep_values.get(left_node_idx)
+                                    {
+                                        match right_deep_node.value {
+                                            // [1,2,3] vs [[1,2,3]] => [1] vs [1,2,3]
+                                            Value::List(_) => {
+                                                let new_node = Node::simple_list(
+                                                    vec![left_value_number],
+                                                    self.level + 1,
+                                                );
+                                                match new_node.ordered_recursive(right_deep_node) {
+                                                    OrderingResult::Same => {}
+                                                    res => {
+                                                        return res;
+                                                    }
+                                                }
+                                            }
+                                            Value::Simple(right_deep_value_number) => {
+                                                println!(
+                                                    "Comparing: {} to {}",
+                                                    left_value_number, right_deep_value_number
+                                                );
+                                                if left_value_number < right_deep_value_number {
+                                                    return OrderingResult::Correct;
+                                                } else if left_value_number
+                                                    > right_deep_value_number
+                                                {
+                                                    return OrderingResult::Incorrect;
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        println!("There is no items");
+                                        // we ran out of the items
+                                        return OrderingResult::Incorrect;
+                                    }
+                                }
+                                Value::Simple(_) => todo!("Shouldn't happen?"),
+                            }
+                        }
+                    }
+                }
+                println!("Reached end of the life.");
+
+
+
+                if values.len() == 0 {
+                    return match right.value {
+                        Value::List(ref right_values) => {
+                            if right_values.len() == 0 {
+                                OrderingResult::Same
+                            } else {
+                                OrderingResult::Correct
+                            }
+                        }
+                        Value::Simple(_) => OrderingResult::Correct
+                    }
+                } else {
+                    return match right.value {
+                        Value::List(ref right_values) => {
+                            if values.len() < right_values.len() {
+                                OrderingResult::Correct
+                            } else {
+                                OrderingResult::Same
+                            }
+                        },
+                        Value::Simple(_) => todo!(),
+                    }
+                }
+
+                // if it reached the end
+                // we might want to return Same, because upper function call will need to continue.
+                // we might want to return Correct, because it was empty.
+            }
+            // 1, 2
+            // 1, [[2]]
+            // 1, [2]
+            Value::Simple(_) => {
+                todo!("Shouldn't happen");
+            }
+        }
+    }
+
+    fn ordered_recursive_old(&self, right: &Node) -> OrderingResult {
         // [1, [1,2,3]]
         // [1,2,]
         match self.value {
@@ -129,25 +329,29 @@ impl Node {
                                         match right_node.value {
                                             Value::List(_) => {
                                                 match left_node.ordered_recursive(right_node) {
-                                                    OrderingResult::Same => {},
+                                                    OrderingResult::Same => {}
                                                     OrderingResult::Correct => {}
                                                     res => {
                                                         return res;
-                                                    } 
+                                                    }
                                                 }
-                                            },
+                                            }
                                             Value::Simple(right_inner_value_number) => {
-                                                match left_node.ordered_recursive(&Node::simple_list(vec![right_inner_value_number], right_node.level)) {
-                                                    OrderingResult::Same => {},
+                                                match left_node.ordered_recursive(
+                                                    &Node::simple_list(
+                                                        vec![right_inner_value_number],
+                                                        right_node.level,
+                                                    ),
+                                                ) {
+                                                    OrderingResult::Same => {}
                                                     OrderingResult::Correct => {}
                                                     res => {
                                                         return res;
-                                                    } 
+                                                    }
                                                 }
                                             }
                                         }
-
-                                    },
+                                    }
                                     // [1,2,3] vs [[1], 2, 3]
                                     // [1,2,3] vs [[1,2],3 ]
                                     Value::Simple(left_inner_value_number) => {
@@ -155,34 +359,48 @@ impl Node {
                                             // 1 vs [1]
                                             // 1 vs [1,2]
                                             Value::List(_) => {
-                                                let new_node = Node::simple_list(vec![left_inner_value_number], left_node.level);
+                                                let new_node = Node::simple_list(
+                                                    vec![left_inner_value_number],
+                                                    left_node.level,
+                                                );
                                                 // 1 vs [1]
                                                 // turns into [1] vs [1]
-                                                println!("Converting {:?} into {:?}", left_node, new_node);
+                                                println!(
+                                                    "Converting {:?} into {:?}",
+                                                    left_node, new_node
+                                                );
                                                 match new_node.ordered_recursive(right_node) {
-                                                    OrderingResult::Same => {},
-                                                    OrderingResult::Correct => {},
+                                                    OrderingResult::Same => {}
+                                                    OrderingResult::Correct => {}
                                                     res => {
                                                         return res;
-                                                    } 
+                                                    }
                                                 }
-                                            },
+                                            }
                                             Value::Simple(right_inner_value_number) => {
-                                                println!("Comparring {} vs {}", left_inner_value_number, right_inner_value_number);
-                                                if left_inner_value_number < right_inner_value_number {
+                                                println!(
+                                                    "Comparring {} vs {}",
+                                                    left_inner_value_number,
+                                                    right_inner_value_number
+                                                );
+                                                if left_inner_value_number
+                                                    < right_inner_value_number
+                                                {
                                                     return OrderingResult::Correct;
-                                                } else if left_inner_value_number > right_inner_value_number {
+                                                } else if left_inner_value_number
+                                                    > right_inner_value_number
+                                                {
                                                     return OrderingResult::Incorrect;
                                                 }
-                                            },
+                                            }
                                         }
-                                    },
+                                    }
                                 }
                             } else {
                                 return OrderingResult::Incorrect;
                             }
                         }
-                    },
+                    }
                     // [4,1] vs 5 -> Incorrect
                     // [] vs 5 -> Correc
                     // [4] vs 5 -> Correct
@@ -197,29 +415,36 @@ impl Node {
                         for (left_node_idx, left_node) in values.iter().enumerate() {
                             match left_node.value {
                                 Value::List(_) => {
-                                    match left_node.ordered_recursive(&Node::simple_list(vec![right_value_number], right.level)) {
-                                        OrderingResult::Same => {},
-                                        OrderingResult::Correct => {},
+                                    match left_node.ordered_recursive(&Node::simple_list(
+                                        vec![right_value_number],
+                                        right.level,
+                                    )) {
+                                        OrderingResult::Same => {}
+                                        OrderingResult::Correct => {}
                                         res => {
                                             return res;
-                                        },
+                                        }
                                     }
-                                },
+                                }
                                 Value::Simple(left_value_number) => {
+                                    println!(
+                                        "Comparing: {} to {}",
+                                        left_value_number, right_value_number
+                                    );
                                     if left_value_number < right_value_number {
                                         return OrderingResult::Correct;
                                     } else if left_value_number > right_value_number {
                                         return OrderingResult::Incorrect;
                                     }
                                 }
-                            }    
+                            }
                         }
-                        
+
                         // len == 0, [] vs 5
                         // len == 0, []
                         // ??
                         return OrderingResult::Correct;
-                    },
+                    }
                 }
             }
             // 1, 2
@@ -341,7 +566,25 @@ impl Node {
     fn simple_list(nums: Vec<u32>, level: u32) -> Node {
         Node {
             value: Value::List(nums.iter().map(|v| Node::simple(*v, level + 1)).collect()),
-            level
+            level,
+        }
+    }
+
+    fn print(&self) -> String {
+        match self.value {
+            Value::List(ref l) => {
+                let mut xd = "[".to_string();
+                for (idx, n) in l.iter().enumerate() {
+                    xd.push_str(&n.print());
+                    if idx != l.len() - 1 {
+                        xd.push(',');
+                    }
+                }
+                xd.push(']');
+
+                xd
+            }
+            Value::Simple(num) => format!("{}", num),
         }
     }
 }
@@ -354,7 +597,7 @@ pub fn solve() {
 
     let reader = io::BufReader::new(file).lines();
 
-    let mut ordered = HashSet::new();
+    let mut ordered = vec![];
     let mut pair_index: usize = 0;
     let mut left: Option<Node> = None;
     let mut right: Option<Node> = None;
@@ -366,17 +609,21 @@ pub fn solve() {
             } else if right.is_none() {
                 right = Some(Node::parse(&line))
             } else {
-                if left.unwrap().ordered_recursive(&right.unwrap()) == OrderingResult::Correct {
-                    ordered.insert(pair_index);
+                if left.unwrap().ordered_recursive(&right.unwrap()).good() {
+                    ordered.push(pair_index);
                 }
                 left = None;
                 right = None;
             }
         }
     }
+    // 12 -> incorrect
+    // 25 -> correct
+    // 42 -> correct
+    // 44 > incorrect
 
-    if left.is_some() && left.unwrap().ordered_recursive(&right.unwrap()) == OrderingResult::Correct {
-        ordered.insert(pair_index);
+    if left.is_some() && left.unwrap().ordered_recursive(&right.unwrap()).good() {
+        ordered.push(pair_index);
     }
 
     println!("{:?}, {}", ordered, ordered.iter().sum::<usize>());
@@ -390,7 +637,7 @@ mod tests {
         let left = Node::parse("[1,2,3,4]");
         let right = Node::parse("[1,2,3,4]");
 
-        assert_eq!(OrderingResult::Correct, left.ordered_recursive(&right));
+        assert_eq!(OrderingResult::Same, left.ordered_recursive(&right));
     }
 
     #[test]
@@ -398,7 +645,7 @@ mod tests {
         let left = Node::parse("[1,2,3]");
         let right = Node::parse("[1,2,3,4]");
 
-        assert_eq!(OrderingResult::Correct, left.ordered_recursive(&right));
+        assert_eq!(OrderingResult::Same, left.ordered_recursive(&right));
     }
 
     #[test]
@@ -410,20 +657,35 @@ mod tests {
     }
 
     #[test]
-    fn complex_1() {
-        let left = Node::parse("[1,2,3,[4,1]]");
-        let right = Node::parse("[1,2,3,5,6]");
+    fn base_case_4() {
+        let left = Node::parse("[1,5,3]");
+        let right = Node::parse("[1,2,3,4]");
 
-        assert_eq!(OrderingResult::Incorrect,left.ordered_recursive(&right));
+        assert_eq!(OrderingResult::Incorrect, left.ordered_recursive(&right));
     }
 
+    #[test]
+    fn complex_0() {
+        let left = Node::parse("[5,[4,1]]");
+        let right = Node::parse("[5,2,3]");
+
+        assert_eq!(OrderingResult::Incorrect, left.ordered_recursive(&right));
+    }
+
+    #[test]
+    fn complex_1() {
+        let left = Node::parse("[1,2,3,[4,1]]");
+        let right = Node::parse("[1,2,3,4,6]");
+
+        assert_eq!(OrderingResult::Incorrect, left.ordered_recursive(&right));
+    }
 
     #[test]
     fn complex_2() {
         let left = Node::parse("[1,2,3,[4],1]");
         let right = Node::parse("[1,2,3,5,6]");
 
-        assert_eq!(OrderingResult::Correct,left.ordered_recursive(&right));
+        assert_eq!(OrderingResult::Correct, left.ordered_recursive(&right));
     }
 
     #[test]
@@ -431,7 +693,7 @@ mod tests {
         let left = Node::parse("[1,2,3]");
         let right = Node::parse("[1,[2],3]");
 
-        assert_eq!(OrderingResult::Correct,left.ordered_recursive(&right));
+        assert_eq!(OrderingResult::Same, left.ordered_recursive(&right));
     }
 
     #[test]
@@ -440,7 +702,7 @@ mod tests {
         let left = Node::parse("[1,[2],3]");
         let right = Node::parse("[1,[2,3]]");
 
-        assert_eq!(OrderingResult::Incorrect,left.ordered_recursive(&right));
+        assert_eq!(OrderingResult::Incorrect, left.ordered_recursive(&right));
     }
 
     #[test]
@@ -449,7 +711,7 @@ mod tests {
         let left = Node::parse("[1,2,3]");
         let right = Node::parse("[1,[2,3]]");
 
-        assert_eq!(OrderingResult::Incorrect,left.ordered_recursive(&right));
+        assert_eq!(OrderingResult::Incorrect, left.ordered_recursive(&right));
     }
 
     // #[test]
@@ -502,7 +764,6 @@ mod tests {
         assert_eq!(OrderingResult::Correct, left.ordered_recursive(&right));
     }
 
-    
     #[test]
     fn complex_case_2() {
         // [9] vs
@@ -526,16 +787,15 @@ mod tests {
         let left = Node::parse("[[4,4],4,4]");
         let right = Node::parse("[[4,4],4,4,4]");
 
-        assert_eq!(OrderingResult::Correct, left.ordered_recursive(&right));
+        assert_eq!(OrderingResult::Same, left.ordered_recursive(&right));
     }
-
 
     #[test]
     fn complex_case_woot_3() {
         let left = Node::parse("[]");
         let right = Node::parse("[3]");
 
-        assert_eq!(OrderingResult::Correct, left.ordered_recursive(&right));
+        assert_eq!(OrderingResult::Same, left.ordered_recursive(&right));
     }
 
     #[test]
@@ -551,9 +811,8 @@ mod tests {
         let left = Node::parse("[[4],3]");
         let right = Node::parse("[[5],2]");
 
-        assert_eq!(OrderingResult::Incorrect, left.ordered_recursive(&right));
+        assert_eq!(OrderingResult::Correct, left.ordered_recursive(&right));
     }
-
 
     #[test]
     fn complex_case_woot_5() {
@@ -565,138 +824,62 @@ mod tests {
         assert_eq!(OrderingResult::Correct, left.ordered_recursive(&right));
     }
 
-
-
-    /* 
     #[test]
-    fn complex_case_3() {
-        let left = Node::parse("[9,8,7,6,5,4,8]");
-        let right = Node::parse("[9,[[8],[[[7]]],6,[[5]]],4,[[3]]]");
+    fn complex_case_woot_6() {
+        //        let left = Node::parse(" [[ ],    [0] , [[ ]] ]");
+        //        let right = Node::parse("[[0],   [[4]],       ]");
+        let left = Node::parse("[[],[1],[[[1,3],2,1,3]]]");
+        let right = Node::parse("[[[],6,[3,8]],[]]");
 
-        assert_eq!(false, left.ordered(&right));
+        assert_eq!(OrderingResult::Correct, left.ordered_recursive(&right));
     }
 
     #[test]
-    fn complex_case_4() {
-        let left = Node::parse("[9,8,7,6,5,4,8]");
-        let right = Node::parse("[9,[[8],[[[7]]],6,[[5]]],4,[[]]]");
+    fn complex_12() {
+        let left = Node::parse("[[1,[[7,6,3,4],9,[]]],[6],[],[[10],[3,[7,9],[8,0,1,6,7],3,[7,8,4,5]],3],[[4,[8,1,0,7],6]]]");
+        let right = Node::parse("[[[1]],[4,5,2,[0]]]");
 
-        assert_eq!(false, left.ordered(&right));
+        assert_eq!(OrderingResult::Incorrect, left.ordered_recursive(&right));
     }
 
     #[test]
-    fn complex_case_finally_understood_problem() {
-        let left = Node::parse("[9,8,[7,6,5],4]");
-        let right = Node::parse("[9,8,7,6,5,4]");
+    fn complex_25() {
+        let left = Node::parse("[[[9,[2,4,3]],6],[4,9],[8]]");
+        let right = Node::parse("[[10,[],7],[10],[[[1,6],[4,0],9,8],[[6,1,5,6],2],10,5],[],[[8,[8,5],[1,6,6,4,10]],5,8,6]]");
 
-        assert_eq!(false, left.ordered(&right));
+        assert_eq!(OrderingResult::Correct, left.ordered_recursive(&right));
     }
 
     #[test]
-    fn complex_case_finally_understood_problem_v2() {
-        let left = Node::parse("[[1],[2,3,4]]");
-        let right = Node::parse("[[1],2,3]");
+    fn complex_7() {
+        let left = Node::parse("[[2,0],[[],[[3,0,6],6,2,6],8,5,[0,[10,0,10,10,8],[4,5,1]]],[[[6,7,0,6,10],[8],[1],6,7],0,6,[10,5,4,[4,2,9],0],[[2,7,8,6,7]]],[[[7,8,6,3],0,[4,3,3,10,8],[4]],[8],2,1,[1,7,[2,3,6],[7,3],9]]]");
+        let right = Node::parse("[[6],[5],[],[6,0],[[],[9,[10,5],10,[4,3,0,6,6]]]]");
 
-        assert_eq!(false, left.ordered(&right));
+        assert_eq!(OrderingResult::Correct, left.ordered_recursive(&right));
     }
 
     #[test]
-    fn left_without_itmes() {
-        // [[4,4],4,4]
-        // [[4,4],4,4,4]
+    fn parse_xd() {
+        let left = Node::parse("[[2,0],3]");
 
-        let left = Node {
-            value: Value::List(vec![
-                Node::simple_list(vec![4, 4]),
-                Node::simple(4),
-                Node::simple(4),
-            ]),
-        };
-        let right = Node {
-            value: Value::List(vec![
-                Node::simple_list(vec![4, 4]),
-                Node::simple(4),
-                Node::simple(4),
-                Node::simple(4),
-            ]),
-        };
-
-        assert_eq!(true, left.ordered(&right));
-    }
-
-    // let's try to break it
-
-    #[test]
-    fn neighbouring_lists() {
-        let left = Node::parse("[[1,2,3],[9,8,7,6,5],0]");
-        let right = Node::parse("[[1,2,3],[[[9,8,7],6],5],4]");
-
-        assert_eq!(true, left.ordered(&right));
+        assert_eq!("[[2,0],3]", left.print());
     }
 
     #[test]
-    fn right_without_itmes() {
-        // [7, 7, 7, 7]
-        // [7, 7, 7]
+    fn complex_91() {
+        let left = Node::parse("[[],[1],[3],[[[7,8,8,4],0],[7,5],[5,[2,0,5,10],[7]],10],[9,[10,7,[10,1,10,8]],5,7,0]]");
+        let right = Node::parse("[[],[],[[],10,[[6],[4,5],[2,2],[7,7]]],[[10,[8]],[[6,9],[3],8],2,[[0,9,1,3],0,5,2,3],[8,5,7,10]]]");
 
-        let left = Node::simple_list(vec![7, 7, 7, 7]);
-        let right = Node::simple_list(vec![7, 7, 7]);
-
-        assert_eq!(false, left.ordered(&right));
+        assert_eq!(OrderingResult::Incorrect, left.ordered_recursive(&right));
     }
 
     #[test]
-    fn right_simple_without_itmes() {
-        // []
-        // [3]
+    fn complex_79() {
+        let left = Node::parse("[[[3],[4,7,1,[2,2,1,8],[1,5]],4,2],[[],3],[],[[[3,8,0,6,5],6,[0]],4]]");
+        let right = Node::parse("[[[3,0],[[0,0,10,4],[4,6,4,5,2]],[[7],7,[10,7,2],[2,6,3],6],9]]");
 
-        let left = Node::simple_list(vec![]);
-        let right = Node::simple_list(vec![3]);
-
-        assert_eq!(true, left.ordered(&right));
+        assert_eq!(OrderingResult::Correct, left.ordered_recursive(&right));
     }
-
-    #[test]
-    fn empty_recurrent_lists() {
-        let left = Node::parse("[[[0,[2]]]]");
-        let right = Node::parse("[[[[2]]]]");
-
-        assert_eq!(true, left.ordered(&right));
-    }
-
-    #[test]
-    fn very_complex_example() {
-        let left = Node::parse("[1,[2,[3,[4,[5,6,7]]]],8,9]");
-        let right = Node::parse("[1,[2,[3,[4,[5,6,0]]]],8,9]");
-
-        assert_eq!(false, left.ordered(&right));
-    }
-
-    #[test]
-    fn failing() {
-        let left = Node::parse("[[1],[2,3,4]]");
-        let right = Node::parse("[[1],4]");
-
-        assert_eq!(true, left.ordered(&right));
-    }
-
-    #[test]
-    fn parse() {
-        let input = "[[1,2],3,4,5]";
-        let expected = Node {
-            value: Value::List(vec![
-                Node::simple_list(vec![1, 2]),
-                Node::simple(3),
-                Node::simple(4),
-                Node::simple(5),
-            ]),
-        };
-
-        println!("expected: {:?}", expected);
-        let parsed = Node::parse(input);
-        println!("actual: {:?}", parsed);
-        assert_eq!(true, expected.ordered(&parsed));
-    } */
 }
 
 /*
