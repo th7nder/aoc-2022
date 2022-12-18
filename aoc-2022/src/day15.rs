@@ -68,6 +68,17 @@ impl Map {
         self.sensors.push(sensor);
     }
 
+    // is reachable by any sensor
+    fn is_reachable_by_any_sensor(&self, position: &Position) -> bool {
+        for sensor in self.sensors.iter() {
+            if position.manhattan(&sensor.position) <= sensor.position.manhattan(&sensor.closest_beacon.position) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     fn unavailable_beacon_positions(&self, y: i32) -> usize {
         let mut unavailable_positions = 0;
         println!("Scanning from: {} to: {}", self.min_x_of_any_sensor, self.max_x_of_any_sensor);
@@ -79,12 +90,9 @@ impl Map {
             if self.beacons.contains(&current_position.to_tuple()) {
                 cant_be = false;
             } else {
-                for sensor in self.sensors.iter() {
-                    if current_position.manhattan(&sensor.position) <= sensor.position.manhattan(&sensor.closest_beacon.position) {
-                        cant_be = true;
-                        break;
-                    }
-                }    
+                if self.is_reachable_by_any_sensor(&current_position) {
+                    cant_be = true;
+                }
             }
 
             if cant_be {
@@ -101,32 +109,131 @@ impl Map {
     fn can_be(&self, max: i32) -> Position {
         println!("Scanning from: {} to: {}", 0, max);
 
-        for x in 0..=max {
-            if x % 1_000_000 == 0 {
-                println!("Scanning x: {}", x);
-            }
-            for y in 0..=max {
-                if y % 1_000_000 == 0 {
-                    println!("Scanning x, {}, y: {}", x, y);
-                }
-                let current_position = Position::new(x, y);
 
-                if self.beacons.contains(&current_position.to_tuple()) {
-                    continue;
-                }
+        for (idx, sensor) in self.sensors.iter().enumerate() {
+            let distance = sensor.position.manhattan(&sensor.closest_beacon.position);
 
-                let mut cant_be = false;
-                for sensor in self.sensors.iter() {
-                    if current_position.manhattan(&sensor.position) <= sensor.position.manhattan(&sensor.closest_beacon.position) {
-                        cant_be = true;
+            let right_edge = Position::new(sensor.position.x + distance + 1, sensor.position.y);
+            let bottom_edge = Position::new(sensor.position.x, sensor.position.y + distance + 1);
+
+            let left_edge = Position::new(sensor.position.x - distance - 1, sensor.position.y);
+            let top_edge = Position::new(sensor.position.x, sensor.position.y - distance - 1);
+
+            let mut starting_position = right_edge.clone();
+            // Scans bottom-left in the right direction
+            while starting_position.x != bottom_edge.x && starting_position.y != bottom_edge.y {
+                for x in starting_position.x..=max {
+                    let current_position = Position::new(x, starting_position.y);
+    
+                    if self.beacons.contains(&current_position.to_tuple()) {
+                        continue;
+                    }
+    
+                    if self.is_reachable_by_any_sensor(&current_position) {
+                        // should we break here?
                         break;
                     }
-                }    
-
-                if !cant_be {
-                    return current_position;
+    
+                    return current_position.clone();
                 }
+
+        
+                starting_position.x -= 1;
+                starting_position.y += 1;
+                if starting_position.x < 0 || starting_position.x > max || starting_position.y < 0 || starting_position.y > max {
+                    break;
+                }
+                // println!("Sensor: [{}], Down-left, Starting {:?}, vs: {:?}", idx, starting_position, bottom_edge);
             }
+            println!("Sensor: [{}], Down-left, Starting {:?}, vs: {:?}", idx, starting_position, bottom_edge);
+
+
+            starting_position = right_edge.clone();
+            // Scans top-left, in the right direction
+            while starting_position.x != top_edge.x && starting_position.y != top_edge.y {
+                for x in starting_position.x..=max {
+                    let current_position = Position::new(x, starting_position.y);
+    
+                    if self.beacons.contains(&current_position.to_tuple()) {
+                        continue;
+                    }
+    
+                    if self.is_reachable_by_any_sensor(&current_position) {
+                        // should we break here?
+                        break;
+                    }
+    
+                    return current_position.clone();
+                }
+
+        
+                starting_position.x -= 1;
+                starting_position.y -= 1;
+                if starting_position.x < 0 || starting_position.x > max || starting_position.y < 0 || starting_position.y > max {
+                    break;
+                }
+                // println!("Sensor: [{}], Up-left, Starting {:?}, vs: {:?}", idx, starting_position, bottom_edge);
+            }
+            println!("Sensor: [{}], Up-left, Starting {:?}, vs: {:?}", idx, starting_position, bottom_edge);
+
+            starting_position = left_edge.clone();
+            // Scans up-right, in the left direction
+            while starting_position.x != top_edge.x && starting_position.y != top_edge.y {
+                for x in (0..=starting_position.x).rev() {
+                    let current_position = Position::new(x, starting_position.y);
+    
+                    if self.beacons.contains(&current_position.to_tuple()) {
+                        continue;
+                    }
+    
+                    if self.is_reachable_by_any_sensor(&current_position) {
+                        // should we break here?
+                        break;
+                    }
+    
+                    return current_position.clone();
+                }
+
+        
+                starting_position.x += 1;
+                starting_position.y -= 1;
+                if starting_position.x < 0 || starting_position.x > max || starting_position.y < 0 || starting_position.y > max {
+                    break;
+                }
+                // println!("Sensor: [{}], Up-right, Starting {:?}, vs: {:?}", idx, starting_position, bottom_edge);
+            }
+            println!("Sensor: [{}], Up-right, Starting {:?}, vs: {:?}", idx, starting_position, bottom_edge);
+
+
+            starting_position = left_edge.clone();
+            // Scans down-right, in the left direction
+            while starting_position.x != bottom_edge.x && starting_position.y != bottom_edge.y {
+                for x in (0..=starting_position.x).rev() {
+                    let current_position = Position::new(x, starting_position.y);
+    
+                    if self.beacons.contains(&current_position.to_tuple()) {
+                        continue;
+                    }
+    
+                    if self.is_reachable_by_any_sensor(&current_position) {
+                        // should we break here?
+                        break;
+                    }
+    
+                    return current_position.clone();
+                }
+
+        
+                starting_position.x += 1;
+                starting_position.y += 1;
+                if starting_position.x < 0 || starting_position.x > max || starting_position.y < 0 || starting_position.y > max {
+                    break;
+                }
+                // println!("Sensor: [{}], Down-right, Starting {:?}, vs: {:?}", idx, starting_position, bottom_edge);
+            }
+            println!("Sensor: [{}], Down-right, Starting {:?}, vs: {:?}", idx, starting_position, bottom_edge);
+
+
         }
 
         panic!("Not found....");
@@ -177,8 +284,8 @@ impl Sensor {
 pub fn solve() {
     let map = Map::from_file("inputs/15_input");
 
-    println!("Part 1: {}", map.unavailable_beacon_positions(2000000));
-    println!("Part 2: {:?}", map.can_be(2000000));
+    // println!("Part 1: {}", map.unavailable_beacon_positions(2000000));
+    println!("Part 2: {:?}", map.can_be(4000000));
 }
 
 mod tests {
