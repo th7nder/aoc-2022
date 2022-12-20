@@ -1,4 +1,4 @@
-use std::collections::hash_map;
+use std::collections::{hash_map, HashSet, VecDeque};
 use std::{collections::HashMap};
 use std::{fs::File};
 use std::io::{self, BufRead};
@@ -6,7 +6,10 @@ use std::io::{self, BufRead};
 use regex::Regex;
 
 pub fn solve() {
+    let volcano = Volcano::from_file("inputs/16_base");
 
+    println!("Starting volcano: {:?}", volcano);
+    volcano.simulate();
 }
 
 
@@ -55,50 +58,110 @@ impl Volcano {
     fn simulate(&self) {
         let mut state = HashMap::new();
         for valve in self.valves.keys() {
-            state.insert(valve.clone(), false);
+            state.insert(valve.as_str(), false);
         }
 
         self.decision("AA", 0, 0, state);
     }
 
-    // this is bad, we need to rethink the approach
-    fn decision(&self, current_valve: &str, minute: i32, released_pressure: i32, state: HashMap<String, bool>) {
-        if minute == 30 {
-            return
-        }
+    // how abouttt
+    // we know how much pressure will each valve release and 
+    // let's take every possible solution XD 
+    // basically, calculate the shortest paths at each step and try em all
+    fn decision(&self, current_valve: &str, minute: i32, released_pressure: i32, state: HashMap<&str, bool>) {
         // TODO: not sure, when to + 1 and when not to plus one?
         let minute = minute + 1;
         let mut released_pressure = released_pressure;
+        let current_valve = self.valves.get(current_valve).unwrap();
 
-        let mut everything_open = true;
         for (valve, opened) in &state {
             if *opened {
-                released_pressure += self.valves.get(valve).unwrap().flow_rate;
-            } else if self.valves.get(valve).unwrap().flow_rate != 0 {
-                everything_open = false;
+                released_pressure += self.valves.get(*valve).unwrap().flow_rate;
             }
         }
+        println!("Minute... {}, pressure: {}", minute, released_pressure);
 
         if minute == 30 {
+            println!("EXPLODED!");
             return;
         }
 
-        if everything_open {
-            println!("everything open, minute: {}, pressure: {}", minute, released_pressure);
-            // self.decision(current_valve, minute, released_pressure, state.clone());
-            return;
-        }
-
-        let current_valve = self.valves.get(current_valve).unwrap();
-        if current_valve.flow_rate != 0 && !state.get(&current_valve.name).unwrap() {
+        if current_valve.flow_rate != 0 && !state.get(current_valve.name.as_str()).unwrap() {
             let mut next_state = state.clone();
-            next_state.insert(current_valve.name.clone(), true);
+            next_state.insert(current_valve.name.as_str(), true);
             self.decision(&current_valve.name, minute, released_pressure, next_state)
         }
+
 
         for valve in &current_valve.connected_to {
             self.decision(valve, minute, released_pressure, state.clone());            
         }
+
+
+
+    }
+
+    fn choose_valve(&self, current_valve: &str) {
+        let current_valve = self.valves.get(current_valve).unwrap();
+
+        let mut visited: HashSet<&str> = HashSet::new();
+        let mut queue: VecDeque<&str> = VecDeque::new();
+        queue.push_back(&current_valve.name);
+
+        let max_minutes = 30;
+        // TODO: not thought about it really;
+        let current_minute = 0;
+
+        // let mut maximum_flow_rate = 0;
+        let mut maximum_pressure = 0;
+
+        let mut maximum_valve = "AA";
+        let mut current_minute = 1;
+
+        // this algorithm just takes the shortest path with the maximum reward
+        // it doesnt take time into dimension.
+        while queue.len() > 0 {
+            if current_minute == 30 {
+                println!("EXPLODED!");
+                break;
+            }
+            let mut valves_to_process = queue.len();
+
+            while valves_to_process > 0 {
+                let current_valve = self.valves.get(queue.pop_front().unwrap()).unwrap();
+                println!("Going to {}", &current_valve.name);
+
+                visited.insert(&current_valve.name);
+                
+                // let's traverse the graph and find the valve with the maximum flow rate
+                // TODO: not thought about it really +1 or not +1...
+                let minutes_after_opening = (max_minutes - current_minute);
+                let current_possible_pressure = current_valve.flow_rate * minutes_after_opening;
+                if current_possible_pressure > maximum_pressure {
+                    println!("minute: {}, remaining minutes: {}, {}, possible pressure: {}", current_minute, minutes_after_opening, &current_valve.name, current_possible_pressure);
+                    maximum_pressure = current_possible_pressure;
+                    maximum_valve = &current_valve.name;
+                }
+                // if current_valve.flow_rate > maximum_flow_rate {
+                //     maximum_flow_rate = current_valve.flow_rate;
+                //     maximum_valve = &current_valve.name;
+                // }
+    
+                for neighbour in &current_valve.connected_to {
+                    if visited.contains(neighbour.as_str()) {
+                       continue; 
+                    }
+                    queue.push_back(neighbour);
+                }
+
+                valves_to_process -= 1;
+            }
+
+            current_minute += 1;
+            println!("Processed, current minute {}", current_minute);
+        }
+
+        println!("Maximum pressure: {}, valve: {}", maximum_pressure, maximum_valve);
     }
 }
 
