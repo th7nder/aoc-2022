@@ -1,4 +1,7 @@
+use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::collections::{hash_map, HashSet, VecDeque};
+use std::rc::Rc;
 use std::{collections::HashMap};
 use std::{fs::File};
 use std::io::{self, BufRead};
@@ -6,16 +9,17 @@ use std::io::{self, BufRead};
 use regex::Regex;
 
 pub fn solve() {
-    let volcano = Volcano::from_file("inputs/16_base");
+    let volcano = Volcano::from_file("inputs/16_input");
 
     println!("Starting volcano: {:?}", volcano);
-    volcano.simulate();
+    volcano.start()
 }
 
 
 #[derive(Debug)]
 struct Volcano {
     valves: HashMap<String, Valve>,
+    max_pressure: Rc<RefCell<i32>>,
 }
 
 impl Volcano {
@@ -51,23 +55,43 @@ impl Volcano {
             }
         }
     
-        Volcano { valves }
+        Volcano { valves, max_pressure: Rc::new(RefCell::new(0)) }
+    }
+
+    fn start(&self) {
+        let opened: HashSet<&str> = HashSet::new();
+        self.simulate("AA", opened, 1, 0, vec![]);
+
+        println!("Max pressure: {}", *self.max_pressure.borrow_mut());
     }
 
 
-    fn simulate(&self) {
-        let mut state = HashMap::new();
-        for valve in self.valves.keys() {
-            state.insert(valve.as_str(), false);
+    fn simulate(&self, current_valve: &str, opened: HashSet<&str>, current_minute: i32, max_pressure: i32, path: Vec<(&str, i32, i32)>) {
+        let maximum_pressures = self.calculate_shortest_paths(
+            current_valve, 
+            current_minute, 
+            opened.clone()
+        );
+
+        if maximum_pressures.len() == 0 {
+            let mut volcano_pressure = self.max_pressure.borrow_mut();
+            if max_pressure > *volcano_pressure {
+                *volcano_pressure = max_pressure;
+            }
+            // println!("Can't go nowhere, {}, {:?}, path: {:?}", max_pressure, current_minute, path);
         }
 
-        self.decision("AA", 0, 0, state);
+        for (valve, (needed_minutes, pressure)) in &maximum_pressures {
+            let mut opened = opened.clone();
+            opened.insert(*valve);
+            if current_minute + needed_minutes < 30 {
+                let mut path = path.clone();
+                path.push((valve, *needed_minutes, *pressure));
+                self.simulate(valve, opened, current_minute + needed_minutes, max_pressure + pressure, path.clone());
+            }
+        }
     }
 
-    // how abouttt
-    // we know how much pressure will each valve release and 
-    // let's take every possible solution XD 
-    // basically, calculate the shortest paths at each step and try em all
     fn decision(&self, current_valve: &str, minute: i32, released_pressure: i32, state: HashMap<&str, bool>) {
         // TODO: not sure, when to + 1 and when not to plus one?
         let minute = minute + 1;
@@ -99,6 +123,74 @@ impl Volcano {
 
 
 
+    }
+
+
+
+    // how abouttt
+    // we know how much pressure will each valve release and 
+    // let's take every possible solution XD 
+    // basically, calculate the shortest paths at each step and try em all
+    fn calculate_shortest_paths(&self, current_valve: &str, starting_minute: i32, opened: HashSet<&str>) -> HashMap<&str, (i32, i32)> {
+        let current_valve = self.valves.get(current_valve).unwrap();
+
+        let mut visited: HashSet<&str> = HashSet::new();
+        let mut queue: VecDeque<&str> = VecDeque::new();
+        queue.push_back(&current_valve.name);
+
+        let max_minutes = 30;
+
+        let mut current_minute = starting_minute;
+        let mut maximum_pressures: HashMap<&str, (i32, i32)> = HashMap::new();
+
+        let mut everything_open = true;
+        for (name, valve) in &self.valves {
+            if valve.flow_rate != 0 && !opened.contains(name.as_str()) {
+                everything_open = false;
+            }
+        }
+        if everything_open {
+            return maximum_pressures;
+        }
+
+
+        // this algorithm just takes the shortest path with the maximum reward
+        // it doesnt take time into dimension.
+        while queue.len() > 0 {
+            if current_minute == 30 {
+                break;
+            }
+            let mut valves_to_process = queue.len();
+
+            while valves_to_process > 0 {
+                let current_valve = self.valves.get(queue.pop_front().unwrap()).unwrap();
+
+                visited.insert(&current_valve.name);
+                
+                // let's traverse the graph and find the valve with the maximum flow rate
+                if !opened.contains(current_valve.name.as_str()) {
+                    let minutes_after_opening = max_minutes - current_minute;
+                    let current_possible_pressure = current_valve.flow_rate * minutes_after_opening;
+                    if current_possible_pressure > maximum_pressures.get(current_valve.name.as_str()).or(Some(&(0, 0))).unwrap().1 {
+                        maximum_pressures.insert(&current_valve.name, (current_minute - starting_minute + 1, current_possible_pressure));
+                    }
+                }
+
+                for neighbour in &current_valve.connected_to {
+                    if visited.contains(neighbour.as_str()) {
+                       continue; 
+                    }
+                    queue.push_back(neighbour);
+                }
+
+                valves_to_process -= 1;
+            }
+
+            current_minute += 1;
+        }
+
+        // println!("Maximum pressure: {:?}", maximum_pressures);
+        maximum_pressures
     }
 
     fn choose_valve(&self, current_valve: &str) {
@@ -193,7 +285,7 @@ mod tests {
         let volcano = Volcano::from_file("inputs/16_base");
 
         println!("Starting volcano: {:?}", volcano);
-        volcano.simulate();
+        volcano.start();
         assert!(volcano.valves.len() > 0)
     }
 }
